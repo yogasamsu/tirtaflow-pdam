@@ -3,37 +3,45 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import os
 
-from db import add_disposition   # <-- kita pakai helper yang sudah dibuat di db.py
+from db import add_disposition, DB_PATH  # kita pakai DB_PATH dari db.py biar konsisten
 
 st.title("📊 Dashboard Surat")
 
-if "role" not in st.session_state:
+# ─────────────────────────────
+# 1. Cek user sudah login
+# ─────────────────────────────
+if st.session_state.get("authentication_status") is not True:
     st.warning("Silakan login di halaman utama.")
     st.stop()
 
-role = st.session_state["role"]
-division = st.session_state["division"]
+role = st.session_state.get("role", "STAFF")
+division = st.session_state.get("division", "Umum")
 username = st.session_state.get("username", "unknown")
 
-DB_PATH = "data/tirtaflow.db"
-
-if not os.path.exists(DB_PATH):
-    st.info("Database belum ada. Silakan upload surat dulu di menu **Upload**.")
-    st.stop()
-
-# --- ambil data surat & disposisi ---
+# ─────────────────────────────
+# 2. Ambil data surat & disposisi dari SQLite
+# ─────────────────────────────
+# (kalau DB belum ada, sqlite akan bikin kosong; kita handle pakai cek df kosong)
 conn = sqlite3.connect(DB_PATH)
+
 df_letters = pd.read_sql_query("SELECT * FROM letters", conn)
-df_disp = pd.read_sql_query("SELECT * FROM dispositions", conn)
+
+try:
+    df_disp = pd.read_sql_query("SELECT * FROM dispositions", conn)
+except Exception:
+    # kalau tabel dispositions belum pernah dibuat (harusnya sudah oleh init_db, tapi jaga-jaga)
+    df_disp = pd.DataFrame()
+
 conn.close()
 
 if df_letters.empty:
-    st.info("Belum ada surat di sistem.")
+    st.info("Belum ada surat di sistem. Silakan upload surat dulu di menu **Upload**.")
     st.stop()
 
-# --- gabungkan dengan assignment terakhir (kalau sudah pernah didisposisikan) ---
+# ─────────────────────────────
+# 3. Gabungkan dengan assignment terakhir (disposisi terakhir)
+# ─────────────────────────────
 if df_disp.empty:
     df = df_letters.copy()
     df["assigned_role"] = None
@@ -41,9 +49,9 @@ if df_disp.empty:
 else:
     df_disp_latest = (
         df_disp.sort_values("created_at")
-              .groupby("letter_id")
-              .tail(1)[["letter_id", "to_role", "to_division"]]
-              .rename(columns={"to_role": "assigned_role", "to_division": "assigned_division"})
+               .groupby("letter_id")
+               .tail(1)[["letter_id", "to_role", "to_division"]]
+               .rename(columns={"to_role": "assigned_role", "to_division": "assigned_division"})
     )
 
     df = df_letters.merge(
@@ -53,17 +61,26 @@ else:
         how="left",
     )
 
-# --- filter sesuai role/divisi yang login ---
+# ─────────────────────────────
+# 4. Filter sesuai role/divisi login
+#    - IT_ADMIN / BAGIAN_UMUM / DIREKTUR: lihat semua
+#    - lainnya: hanya yang assigned_division = division masing-masing
+# ─────────────────────────────
 if role in ("IT_ADMIN", "BAGIAN_UMUM", "DIREKTUR"):
     filtered = df
 else:
+    # kalau kolom belum ada (misalnya belum ada disposisi sama sekali), paksa kolom kosong dulu
+    if "assigned_division" not in df.columns:
+        df["assigned_division"] = None
     filtered = df[df["assigned_division"] == division]
 
 if filtered.empty:
     st.info("Tidak ada surat untuk role/divisi Anda saat ini.")
     st.stop()
 
-# --- tampilkan tabel utama ---
+# ─────────────────────────────
+# 5. Tampilkan tabel utama
+# ─────────────────────────────
 expected_cols = [
     "id",
     "nomor_internal",
@@ -93,8 +110,7 @@ if role in ("BAGIAN_UMUM", "DIREKTUR") and not filtered.empty:
 
     st.subheader("⚡ Disposisi Cepat dari Dashboard")
 
-    # opsi surat yang bisa didisposisikan
-    # (kita tetap pakai df tanpa filter supaya direktur / umum bisa pilih semua)
+    # direktur / umum boleh memilih dari semua surat
     source_df = df_letters.copy()
 
     def make_label(row):
@@ -113,12 +129,13 @@ if role in ("BAGIAN_UMUM", "DIREKTUR") and not filtered.empty:
         format_func=lambda x: options[x],
     )
 
-    # tujuan disposisi
+    # Tujuan disposisi — disesuaikan dengan nama divisi yang kita pakai
     tujuan_map = {
         "Kirim ke Direksi": ("DIREKTUR", "Direksi"),
-        "Divisi Komersial": ("DIVISI", "Komersial"),
-        "Divisi Operasional": ("DIVISI", "Operasional"),
-        "Divisi Umum": ("DIVISI", "Umum"),
+        "Divisi Operasi": ("MANAGER", "Operasi"),
+        "Divisi Hubungan Pelanggan": ("MANAGER", "Hubungan Pelanggan"),
+        "Divisi Umum": ("BAGIAN_UMUM", "Umum"),
+        "Divisi IT": ("STAFF", "IT"),
     }
 
     tujuan_label = st.selectbox(
@@ -148,7 +165,9 @@ if role in ("BAGIAN_UMUM", "DIREKTUR") and not filtered.empty:
         st.success(f"Disposisi tersimpan: Surat ID {selected_id} ⇒ {tujuan_label}")
         st.rerun()   # refresh supaya assigned_division di tabel ikut update
 
-# --- tombol download CSV seperti sebelumnya ---
+# ─────────────────────────────
+# 6. Tombol download CSV
+# ─────────────────────────────
 st.download_button(
     "⬇️ Unduh CSV (Dashboard)",
     data=filtered.to_csv(index=False).encode("utf-8"),

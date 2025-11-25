@@ -2,19 +2,34 @@ import os
 import sqlite3
 from datetime import datetime
 
-DB_PATH = "data/tirtaflow.db"
+DB_DIR = "data"
+DB_PATH = f"{DB_DIR}/tirtaflow.db"
 
 
 # -------------------------------------------------
-# 1. INIT DB
+# 0. Helper: open SQLite connection safely
+# -------------------------------------------------
+def get_conn():
+    """Buka koneksi SQLite dengan foreign key diaktifkan."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+# -------------------------------------------------
+# 1. INIT DB (dipanggil 1x di app.py)
 # -------------------------------------------------
 def init_db():
-    """Buat folder data + tabel SQLite kalau belum ada."""
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    """Buat folder data + tabel jika belum ada."""
+
+    # Pastikan folder ada
+    os.makedirs(DB_DIR, exist_ok=True)
+
+    conn = get_conn()
     c = conn.cursor()
 
-    # Tabel surat masuk
+    # === TABEL SURAT ===
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS letters (
@@ -33,7 +48,7 @@ def init_db():
         """
     )
 
-    # Tabel disposisi surat
+    # === TABEL DISPOSISI ===
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS dispositions (
@@ -46,7 +61,7 @@ def init_db():
             note TEXT,
             created_by TEXT,
             created_at TEXT,
-            FOREIGN KEY(letter_id) REFERENCES letters(id)
+            FOREIGN KEY(letter_id) REFERENCES letters(id) ON DELETE CASCADE
         )
         """
     )
@@ -56,7 +71,7 @@ def init_db():
 
 
 # -------------------------------------------------
-# 2. INSERT SURAT
+# 2. INSERT SURAT MASUK
 # -------------------------------------------------
 def insert_letter(
     nomor_internal=None,
@@ -69,20 +84,14 @@ def insert_letter(
     timestamp=None,
     filename=None,
     ocr_text=None,
-    file_path=None,   # <--- supaya kompatibel dengan pemanggilan lama
+    file_path=None,
 ):
     """
     Simpan 1 surat ke tabel letters.
-
-    - nomor_internal: boleh None -> dibuat otomatis YYYY/MM/NNN
-    - timestamp: boleh None -> pakai waktu sekarang
-    - filename:
-        - kalau None tapi file_path ada -> otomatis pakai nama file dari file_path
-    - return: (letter_id, nomor_internal)
+    Menghasilkan (letter_id, nomor_internal).
     """
-    import os  # pastikan ada di atas file juga boleh
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
 
     # waktu sekarang
@@ -95,21 +104,24 @@ def insert_letter(
         except Exception:
             now = datetime.now()
 
-    # kalau filename belum diisi tapi kita dapat file_path
-    if not filename and file_path:
-        filename = os.path.basename(file_path)
-
-    # auto-generate nomor_internal kalau belum ada
+    # auto generate nomor_internal
     if not nomor_internal:
         year = now.year
         month = now.month
         prefix = f"{year}-{month:02d}"
+
+        # Hitung surat di bulan yang sama
         c.execute(
             "SELECT COUNT(*) FROM letters WHERE substr(timestamp, 1, 7) = ?",
             (prefix,),
         )
         seq = c.fetchone()[0] + 1
+
         nomor_internal = f"{year}/{month:02d}/{seq:03d}"
+
+    # kalau filename tidak diberikan tapi ada file_path
+    if not filename and file_path:
+        filename = os.path.basename(file_path)
 
     c.execute(
         """
@@ -145,6 +157,8 @@ def insert_letter(
     conn.close()
 
     return letter_id, nomor_internal
+
+
 # -------------------------------------------------
 # 3. INSERT DISPOSISI
 # -------------------------------------------------
@@ -157,8 +171,9 @@ def add_disposition(
     note: str,
     created_by: str,
 ):
-    """Simpan satu record disposisi ke tabel dispositions."""
-    conn = sqlite3.connect(DB_PATH)
+    """Simpan satu record disposisi."""
+
+    conn = get_conn()
     c = conn.cursor()
 
     c.execute(
@@ -189,10 +204,13 @@ def add_disposition(
     conn.commit()
     conn.close()
 
+
+# -------------------------------------------------
+# 4. GET SURAT DETAIL
+# -------------------------------------------------
 def get_letter_by_id(letter_id: int):
     """Ambil satu surat berdasarkan ID dari tabel letters."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_conn()
     c = conn.cursor()
     c.execute("SELECT * FROM letters WHERE id = ?", (letter_id,))
     row = c.fetchone()
@@ -200,11 +218,14 @@ def get_letter_by_id(letter_id: int):
     return dict(row) if row else None
 
 
+# -------------------------------------------------
+# 5. GET RIWAYAT DISPOSISI
+# -------------------------------------------------
 def get_dispositions_for_letter(letter_id: int):
     """Ambil seluruh riwayat disposisi untuk satu surat."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_conn()
     c = conn.cursor()
+
     c.execute(
         """
         SELECT *
@@ -214,6 +235,8 @@ def get_dispositions_for_letter(letter_id: int):
         """,
         (letter_id,),
     )
+
     rows = c.fetchall()
     conn.close()
+
     return [dict(r) for r in rows]
