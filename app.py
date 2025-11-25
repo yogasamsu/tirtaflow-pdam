@@ -116,7 +116,7 @@ if auth_status:
     ### Selamat datang di Tirtaflow
 
     Silakan gunakan menu di **sidebar** untuk:
-    - 📥 **Upload Surat** – unggah surat → OCR → analisa AI (Groq)
+    - 📥 **Upload Surat** – unggah surat → OCR → analisa AI (Groq)>> MAKSIMAL 1MB
     - 📊 **Dashboard Surat** – daftar surat sesuai role/divisi
     - 📄 **Detail Surat** – lihat 1 surat, download file asli & riwayat disposisi
 
