@@ -101,7 +101,11 @@ def analyse_text_with_groq(teks: str) -> Dict:
             "rekomendasi_divisi": "Umum",
         }
 
-    client = _get_groq_client()
+    client = Groq(
+    api_key=api_key,
+    max_retries=2,
+    )
+
     model = _get_groq_model()
 
     # Panggil Groq
