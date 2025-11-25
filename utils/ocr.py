@@ -55,22 +55,31 @@ else:
     ocr_input_path = str(save_path)
 
 
-def ocr_space_file(file_path: str, api_key: str, language: str = "eng", timeout: int = 30) -> str:
+def ocr_space_file(file_path: str, api_key: str, language: str="eng", timeout: int=90) -> str:
     url = "https://api.ocr.space/parse/image"
 
-    with open(file_path, "rb") as f:
-        res = requests.post(
-            url,
-            files={"file": f},   # gunakan "file" bukan "filename"
-            data={
-                "language": language,
-                "isTable": False,
-                "scale": True,
-                "OCREngine": 2
-            },
-            headers={"apikey": api_key},
-            timeout=timeout
-        )
+    for attempt in range(3):  # coba 3x
+        try:
+            with open(file_path, "rb") as f:
+                res = requests.post(
+                    url,
+                    files={"file": f},
+                    data={
+                        "language": language,
+                        "isTable": False,
+                        "scale": True,
+                        "OCREngine": 2
+                    },
+                    headers={"apikey": api_key},
+                    timeout=timeout
+                )
+            break
+        except requests.exceptions.Timeout:
+            if attempt < 2:
+                time.sleep(2)
+                continue
+            else:
+                raise RuntimeError("OCR timeout setelah 3x percobaan.")
 
     data = res.json()
 

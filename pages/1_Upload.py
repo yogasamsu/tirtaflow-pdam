@@ -2,6 +2,8 @@ import streamlit as st
 from datetime import datetime
 from pathlib import Path
 import time
+import io
+from PIL import Image  # untuk kompres gambar
 
 from db import insert_letter
 from utils.ocr import ocr_space_file
@@ -47,22 +49,68 @@ if submitted:
     unique_filename = f"{int(time.time())}_{uploaded_file.name}"
     save_path = letters_dir / unique_filename
 
+    # baca bytes sekali saja
+    file_bytes = uploaded_file.getvalue()
+
     with open(save_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+        f.write(file_bytes)
 
     # ─────────────────────────────
-    #  OCR
+    #  3.b OCR (dengan kompres gambar >1MB)
     # ─────────────────────────────
     st.info("🔍 OCR in progress…")
-    OCR_API_KEY = st.secrets.get("OCR_SPACE_API_KEY")
 
+    OCR_API_KEY = st.secrets.get("OCR_SPACE_API_KEY")
     if not OCR_API_KEY:
         st.error("OCR_SPACE_API_KEY belum diset di secrets!")
         st.stop()
 
+    MAX_SIZE = 1024 * 1024  # 1 MB
+
+    # Tentukan path yang akan dikirim ke OCR
+    if uploaded_file.type in ["image/jpeg", "image/jpg", "image/png"]:
+        # Gambar → kompres jika perlu
+        if len(file_bytes) > MAX_SIZE:
+            st.info("📉 File besar, melakukan kompres sebelum OCR…")
+
+            img = Image.open(io.BytesIO(file_bytes))
+            img = img.convert("RGB")
+
+            # Resize kalau resolusi sangat besar
+            max_dim = 1500
+            if max(img.size) > max_dim:
+                img.thumbnail((max_dim, max_dim))
+
+            quality = 85
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=quality)
+
+            # Turunkan kualitas sampai <1MB atau minimal quality = 30
+            while buffer.tell() > MAX_SIZE and quality > 30:
+                quality -= 10
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=quality)
+
+            compressed_bytes = buffer.getvalue()
+            st.success(f"📦 Ukuran setelah kompres: {len(compressed_bytes)/1024:.1f} KB")
+
+            # simpan file hasil kompres untuk OCR
+            temp_path = letters_dir / f"compressed_{unique_filename}.jpg"
+            with open(temp_path, "wb") as f:
+                f.write(compressed_bytes)
+
+            ocr_input_path = str(temp_path)
+        else:
+            # gambar sudah cukup kecil → pakai file asli
+            ocr_input_path = str(save_path)
+    else:
+        # PDF atau tipe lain → langsung pakai file asli
+        ocr_input_path = str(save_path)
+
+    # Panggil OCR di sini
     try:
         ocr_text = ocr_space_file(
-            str(save_path),
+            ocr_input_path,
             api_key=OCR_API_KEY,
             language="eng",
         )
@@ -72,7 +120,7 @@ if submitted:
         ocr_text = ""
 
     # ─────────────────────────────
-    #  AI Analysis
+    #  3.c AI Analysis
     # ─────────────────────────────
     ai_nomor = ai_maksud = ai_rekom = None
     status = "Pending"
@@ -91,7 +139,7 @@ if submitted:
             status = "OCR Selesai"
 
     # ─────────────────────────────
-    #  Simpan ke database (nomor_internal auto-generated)
+    #  3.d Simpan ke database (nomor_internal auto-generated)
     # ─────────────────────────────
     letter_id, nomor_internal = insert_letter(
         nomor_internal=None,          # ➡️ gunakan auto-generate dari db.py
@@ -107,7 +155,7 @@ if submitted:
     )
 
     # ─────────────────────────────
-    #  Feedback
+    #  3.e Feedback
     # ─────────────────────────────
     st.success(f"Sukses simpan surat ID #{letter_id} — Nomor Internal: {nomor_internal}")
     st.link_button("Lihat Dashboard", "/2_Dashboard")
