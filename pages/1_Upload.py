@@ -117,6 +117,7 @@ if submitted:
         st.success("OCR selesai.")
     except Exception as e:
         st.error(f"OCR gagal: {e}")
+        st.caption("Anda masih bisa menyimpan surat ini. Detail OCR & AI dapat diisi manual nanti.")
         ocr_text = ""
 
     # ─────────────────────────────
