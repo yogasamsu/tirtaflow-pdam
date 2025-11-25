@@ -2,6 +2,9 @@ import streamlit as st
 import streamlit_authenticator as stauth
 from db import init_db
 
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+OCR_API_KEY = st.secrets["OCR_SPACE_API_KEY"]
+
 # ---------------------------
 # Konfigurasi dasar app
 # ---------------------------
