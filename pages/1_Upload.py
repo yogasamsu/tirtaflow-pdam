@@ -159,4 +159,6 @@ if submitted:
     #  3.e Feedback
     # ─────────────────────────────
     st.success(f"Sukses simpan surat ID #{letter_id} — Nomor Internal: {nomor_internal}")
-    st.link_button("Lihat Dashboard", "/2_Dashboard")
+
+    if st.button("Lihat Dashboard"):
+        st.switch_page("pages/2_Dashboard.py")  # sesuaikan dengan nama file dashboard Mas
