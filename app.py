@@ -2,11 +2,28 @@ import streamlit as st
 import streamlit_authenticator as stauth
 from db import init_db
 
+
+# ❌ baris lama dihapus:
+# GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+# OCR_API_KEY  = st.secrets["OCR_SPACE_API_KEY"]
+
+# ---------------------------
+# 2. Konfigurasi dasar app
+# ---------------------------
+init_db()
+st.set_page_config(
+    page_title="TIRTAFLOW",
+    page_icon="💧",
+    layout="wide",
+)
+
+# dst...
+
 # ---------------------------
 # 1. API Keys dari Secrets
 # ---------------------------
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-OCR_API_KEY  = st.secrets["OCR_SPACE_API_KEY"]
+#GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+#OCR_API_KEY  = st.secrets["OCR_SPACE_API_KEY"]
 
 # ---------------------------
 # 2. Konfigurasi dasar app
